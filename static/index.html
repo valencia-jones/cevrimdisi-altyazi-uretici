@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Çevrimdışı Altyazı Üretici</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fff; --ink:#1d1d1b; --mut:#6b6a64; --acc:#1f6feb; --line:#e3e1d9; --ok:#1a7f4b; --err:#c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161614; --card:#201f1d; --ink:#f0eee8; --mut:#a09e96; --line:#33322e; --acc:#5b9dff; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:820px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  p.sub { color:var(--mut); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:36px 16px; text-align:center; cursor:pointer; transition:.15s; }
+  #drop.over { border-color:var(--acc); background:rgba(31,111,235,.06); }
+  #drop strong { display:block; font-size:1.05rem; }
+  #drop span { color:var(--mut); font-size:.9rem; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; margin-top:16px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:.85rem; color:var(--mut); flex:1; min-width:180px; }
+  select { padding:9px 10px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); font:inherit; }
+  button { padding:10px 18px; border-radius:8px; border:0; background:var(--acc); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.sec { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; margin:12px 0 6px; }
+  .bar > i { display:block; height:100%; width:0; background:var(--acc); transition:width .3s; }
+  #msg { color:var(--mut); font-size:.9rem; }
+  #msg.err { color:var(--err); } #msg.ok { color:var(--ok); }
+  #out { max-height:340px; overflow:auto; font:13px/1.5 ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap; border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:12px; background:var(--bg); }
+  .note { font-size:.85rem; color:var(--mut); }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Çevrimdışı Altyazı Üretici</h1>
+  <p class="sub">Videonuz bilgisayarınızdan çıkmaz. İki saat ve üzeri videolar desteklenir. Ücretsiz ve sınırsız.</p>
+
+  <div class="card">
+    <div id="drop">
+      <strong id="dropText">Video veya ses dosyasını buraya sürükleyin</strong>
+      <span>ya da tıklayıp seçin (mp4, mkv, mov, avi, webm, mp3, wav, m4a ...)</span>
+      <input id="file" type="file" accept="video/*,audio/*" class="hide">
+    </div>
+    <div class="row">
+      <label>Dil
+        <select id="lang">
+          <option value="auto">Otomatik algıla</option>
+          <option value="tr">Türkçe</option><option value="en">İngilizce</option>
+          <option value="de">Almanca</option><option value="fr">Fransızca</option>
+          <option value="es">İspanyolca</option><option value="ar">Arapça</option>
+          <option value="ru">Rusça</option><option value="it">İtalyanca</option>
+        </select>
+      </label>
+      <label>Model (doğruluk / hız)
+        <select id="model">
+          <option value="tiny">tiny – en hızlı, düşük doğruluk</option>
+          <option value="base">base – hızlı</option>
+          <option value="small" selected>small – dengeli (önerilen)</option>
+          <option value="medium">medium – yüksek doğruluk, yavaş</option>
+          <option value="large-v3">large-v3 – en iyi, çok yavaş</option>
+        </select>
+      </label>
+      <label>İşlem
+        <select id="task">
+          <option value="tr" selected>Türkçe altyazı (çevir)</option>
+          <option value="transcribe">Aynı dilde altyazı (çeviri yok)</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="start" disabled>Altyazıyı oluştur</button>
+      <button id="cancel" class="sec hide">İptal</button>
+    </div>
+  </div>
+
+  <div id="prog" class="card hide">
+    <div class="bar"><i id="fill"></i></div>
+    <div id="msg"></div>
+    <div id="out"></div>
+    <div id="dl" class="row hide">
+      <button data-f="srt">SRT indir</button>
+      <button data-f="vtt" class="sec">VTT indir</button>
+      <button data-f="txt" class="sec">Düz metin (TXT)</button>
+    </div>
+    <div id="exp" class="hide">
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0 12px">
+      <strong>Altyazıyı videoya göm</strong>
+      <div class="row">
+        <label>Gömme türü
+          <select id="expMode">
+            <option value="hard">Yakılmış: her oynatıcıda görünür (yeniden kodlanır, yavaş)</option>
+            <option value="soft">Ayrı iz: açılıp kapatılabilir (hızlı, kalite kaybı yok)</option>
+          </select>
+        </label>
+        <label id="qualWrap">Video kalitesi
+          <select id="expQuality">
+            <option value="fast">Hızlı: küçük dosya, hafif kalite kaybı</option>
+            <option value="high" selected>Yüksek: önerilen</option>
+            <option value="max">En yüksek: çok yavaş, büyük dosya</option>
+          </select>
+        </label>
+        <label id="sizeWrap">Yazı boyutu
+          <select id="expSize">
+            <option value="18">Küçük</option>
+            <option value="24" selected>Orta</option>
+            <option value="32">Büyük</option>
+          </select>
+        </label>
+      </div>
+      <div class="row"><button id="expBtn">Videoya göm</button></div>
+      <div class="bar hide" id="expBar"><i id="expFill"></i></div>
+      <div id="expMsg" class="note"></div>
+      <div class="row hide" id="expDl"><button id="expGet">Altyazılı videoyu indir</button></div>
+    </div>
+  </div>
+
+  <p class="note">İlk kullanımda seçtiğiniz modelin ve (Türkçeye çeviri için) dil çifti paketinin bir kez indirilmesi gerekir (small ≈ 460 MB, çeviri paketi ≈ 100 MB). Sonrasında internet gerekmez.
+  Uzun videolarda işlem süresi bilgisayarınızın hızına bağlıdır; ekran kartı (GPU) varsa çok daha hızlıdır. Sayfayı kapatmayın.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let file = null, jobId = null, after = 0, timer = null;
+
+const drop = $('drop'), input = $('file');
+drop.onclick = () => input.click();
+input.onchange = () => pick(input.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+
+function pick(f) {
+  if (!f) return;
+  file = f;
+  $('dropText').textContent = f.name + ' (' + (f.size / 1048576).toFixed(0) + ' MB)';
+  $('start').disabled = false;
+}
+
+function fmt(s) {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return (h ? h + ' sa ' : '') + (m ? m + ' dk ' : '') + x + ' sn';
+}
+
+function setMsg(t, cls) { const m = $('msg'); m.textContent = t; m.className = cls || ''; }
+
+$('start').onclick = () => {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('language', $('lang').value);
+  fd.append('model', $('model').value);
+  fd.append('task', $('task').value);
+
+  $('prog').classList.remove('hide');
+  $('dl').classList.add('hide');
+  $('exp').classList.add('hide');
+  $('expDl').classList.add('hide');
+  $('expBar').classList.add('hide');
+  $('expMsg').textContent = '';
+  $('out').textContent = '';
+  $('fill').style.width = '0';
+  $('start').disabled = true;
+  $('cancel').classList.remove('hide');
+  after = 0;
+  setMsg('Dosya aktarılıyor (yerel sunucuya)...');
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/upload');
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) setMsg('Aktarılıyor: %' + Math.round(e.loaded / e.total * 100));
+  };
+  xhr.onload = () => {
+    try { jobId = JSON.parse(xhr.responseText).id; } catch { return fail('Yükleme başarısız.'); }
+    poll();
+  };
+  xhr.onerror = () => fail('Sunucuya bağlanılamadı.');
+  xhr.send(fd);
+};
+
+$('cancel').onclick = () => {
+  if (jobId) fetch('/api/cancel/' + jobId, { method: 'POST' });
+};
+
+function fail(t) {
+  setMsg(t, 'err');
+  $('start').disabled = false;
+  $('cancel').classList.add('hide');
+}
+
+async function poll() {
+  clearTimeout(timer);
+  try {
+    const r = await fetch('/api/status/' + jobId + '?after=' + after);
+    const d = await r.json();
+    d.new.forEach(s => {
+      $('out').textContent += '[' + fmt(s.start) + '] ' + s.text + '\n';
+    });
+    after = d.total;
+    const out = $('out'); out.scrollTop = out.scrollHeight;
+    $('fill').style.width = (d.progress * 100).toFixed(1) + '%';
+    let t = d.message;
+    if (d.state === 'running' && d.duration) {
+      t += '  %' + Math.round(d.progress * 100) + ' (' + fmt(d.progress * d.duration) + ' / ' + fmt(d.duration) + ')';
+      if (d.eta != null) t += ' — kalan ≈ ' + fmt(d.eta);
+    }
+    setMsg(t, d.state === 'error' ? 'err' : d.state === 'done' ? 'ok' : '');
+    if (d.state === 'done') {
+      $('dl').classList.remove('hide');
+      $('exp').classList.remove('hide');
+      $('start').disabled = false;
+      $('cancel').classList.add('hide');
+      return;
+    }
+    if (d.state === 'error' || d.state === 'cancelled') return fail(d.message);
+  } catch (e) { /* geçici hata, yeniden dene */ }
+  timer = setTimeout(poll, 1500);
+}
+
+$('expMode').onchange = () => {
+  $('sizeWrap').classList.toggle('hide', $('expMode').value === 'soft');
+  $('qualWrap').classList.toggle('hide', $('expMode').value === 'soft');
+};
+
+$('expBtn').onclick = async () => {
+  const fd = new FormData();
+  fd.append('mode', $('expMode').value);
+  fd.append('size', $('expSize').value);
+  fd.append('quality', $('expQuality').value);
+  $('expBtn').disabled = true;
+  $('expDl').classList.add('hide');
+  $('expBar').classList.remove('hide');
+  $('expFill').style.width = '0';
+  $('expMsg').textContent = 'Başlatılıyor...';
+  await fetch('/api/export/' + jobId, { method: 'POST', body: fd });
+  pollExport();
+};
+
+async function pollExport() {
+  try {
+    const d = await (await fetch('/api/export_status/' + jobId)).json();
+    $('expFill').style.width = (d.progress * 100).toFixed(1) + '%';
+    $('expMsg').textContent = d.message + (d.state === 'running' ? '  %' + Math.round(d.progress * 100) : '');
+    if (d.state === 'done') {
+      $('expBtn').disabled = false;
+      $('expDl').classList.remove('hide');
+      return;
+    }
+    if (d.state === 'error') { $('expBtn').disabled = false; return; }
+  } catch (e) { /* geçici hata */ }
+  setTimeout(pollExport, 1500);
+}
+
+$('expGet').onclick = () => { location.href = '/api/export_download/' + jobId; };
+
+document.querySelectorAll('#dl button').forEach(b => {
+  b.onclick = () => { location.href = '/api/download/' + jobId + '.' + b.dataset.f; };
+});
+</script>
+</body>
+</html>
