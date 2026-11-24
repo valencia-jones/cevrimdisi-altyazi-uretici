@@ -1,1 +1,22 @@
+# Geçici video ve çıktı dosyaları
+yuklenenler/
 
+# Python önbelleği
+__pycache__/
+*.pyc
+
+# Sanal ortamlar
+venv/
+.venv/
+env/
+
+# Ortam değişkenleri
+.env
+
+# Geliştirme ortamları
+.vscode/
+.idea/
+
+# İşletim sistemi dosyaları
+.DS_Store
+Thumbs.db
